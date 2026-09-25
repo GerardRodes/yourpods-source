@@ -393,9 +393,9 @@ final class CarPlayService: NSObject {
         suppressUpdates = true
         debounceTimer?.invalidate()
         
-        // Resume from where the user left off
-        let position: TimeInterval? = episode.listenedSeconds > 0 ? TimeInterval(episode.listenedSeconds) : nil
-        playerManager?.playEpisode(episode, position: position)
+        // PlayerManager owns resume vs relisten semantics. Completed episodes
+        // restart from zero; in-progress episodes resume normally.
+        playerManager?.playEpisode(episode)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             let nowPlaying = CPNowPlayingTemplate.shared
@@ -415,9 +415,7 @@ final class CarPlayService: NSObject {
         suppressUpdates = true
         debounceTimer?.invalidate()
         
-        Task {
-            await audioManager?.playEpisode(queueItem, initialPosition: TimeInterval(queueItem.positionSeconds), preserveCurrent: true)
-        }
+        playerManager?.playQueueItem(queueItem)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             let nowPlaying = CPNowPlayingTemplate.shared

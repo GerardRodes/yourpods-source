@@ -210,6 +210,46 @@ final class MarkQueuedEpisodeAsPlayedTests: XCTestCase {
                        "The current QueueItem must also carry the reset position")
     }
 
+    /// Episode-based playback is the shared path for library, Siri, deeplinks and CarPlay.
+    /// A completed episode must restart at zero even if a caller supplies a stale end position
+    /// (CarPlay used to do exactly this).
+    func test_playEpisode_playedEpisode_ignoresExplicitEndPositionAndRelistens() async {
+        let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")
+        context.insert(podcast)
+
+        let episode = Episode(
+            guid: "ep-relisten-from-episode",
+            title: "Played Episode",
+            audioUrl: "https://example.com/ep-relisten-from-episode.mp3",
+            durationSeconds: 3600,
+            podcast: podcast
+        )
+        episode.isPlayed = true
+        episode.listenedSeconds = 3600
+        context.insert(episode)
+        try! context.save()
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [podcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        playerManager.playEpisode(episode, position: 3600)
+
+        XCTAssertFalse(episode.isPlayed,
+                       "Explicitly playing a completed Episode must clear completion")
+        XCTAssertEqual(episode.listenedSeconds, 0,
+                       "Relisten must reset persisted progress to zero")
+
+        let started = await pollUntil { audioManager.currentItem?.id == episode.guid }
+        XCTAssertTrue(started, "The selected episode must become current")
+        XCTAssertEqual(audioManager.currentPosition, 0,
+                       "Completed Episode playback must ignore stale explicit end positions")
+        XCTAssertEqual(audioManager.currentItem?.positionSeconds, 0)
+    }
+
     /// Ordinary in-progress queue items still resume from their stored position.
     func test_playQueueItem_unplayedEpisode_preservesPosition() async {
         let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")

@@ -740,10 +740,10 @@ final class PlayerManager {
         audioManager.moveQueueItems(from: source, to: destination)
     }
 
-    /// Play an item already present in Up Next.
+    /// Play an existing QueueItem selected by the user.
     ///
     /// A stale queue item can still carry its last position after the corresponding
-    /// Episode has been marked played. Treat an explicit tap on that item as a relisten:
+    /// Episode has been marked played. Treat explicit selection as a relisten:
     /// clear completion through the normal sync path and restart from the beginning.
     func playQueueItem(_ queueItem: QueueItem) {
         var item = queueItem
@@ -766,8 +766,23 @@ final class PlayerManager {
         }
     }
     
+    /// Play an Episode selected by the user.
+    ///
+    /// Explicitly selecting a completed episode always means "relisten": clear the
+    /// completed state through the normal sync path and restart from zero. This rule
+    /// lives here so every Episode-based surface (library, search results, Siri,
+    /// deeplinks, CarPlay, etc.) gets identical behavior.
     func playEpisode(_ episode: Episode, position: TimeInterval? = nil) {
+        let wasPlayed = episode.isPlayed
+        if wasPlayed, let podcastUrl = episode.podcastUrl {
+            podcastManager?.markEpisodeAsUnplayed(
+                podcastUrl: podcastUrl,
+                episodeGuid: episode.guid
+            )
+        }
+
         guard var item = QueueItem.from(episode: episode) else { return }
+        let initialPosition: TimeInterval? = wasPlayed ? 0 : position
         
         // Mark interacted so episode is removed from Recently Updated
         podcastManager?.markEpisodeAsInteracted(item.podcastUrl, item.id)
@@ -793,7 +808,7 @@ final class PlayerManager {
         audioManager.previousTrackAction = settingsManager?.previousTrackAction ?? .skipBack
         
         Task {
-            await audioManager.playEpisode(item, initialPosition: position, preserveCurrent: true)
+            await audioManager.playEpisode(item, initialPosition: initialPosition, preserveCurrent: true)
         }
     }
     
