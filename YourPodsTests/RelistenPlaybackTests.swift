@@ -160,6 +160,88 @@ final class RelistenPlaybackTests: XCTestCase {
         XCTAssertEqual(audioManager.currentItem?.positionSeconds, 754)
     }
 
+    func test_playEpisode_unplayedEpisode_preservesPosition() async {
+        let (podcast, episode) = makeEpisode(
+            guid: "ep-resume-from-episode",
+            isPlayed: false,
+            listenedSeconds: 900
+        )
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [podcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        playerManager.playEpisode(episode)
+
+        let started = await relistenPollUntil { audioManager.currentItem?.id == episode.guid }
+        XCTAssertTrue(started)
+        XCTAssertEqual(audioManager.currentPosition, 900)
+        XCTAssertFalse(episode.isPlayed)
+        XCTAssertEqual(episode.listenedSeconds, 900)
+    }
+
+    func test_playQueueItem_sameGuidInDifferentPodcast_doesNotFalseRelisten() async {
+        let sharedGuid = "shared-guid"
+
+        let playedPodcast = Podcast(url: "https://example.com/played.xml", title: "Played")
+        context.insert(playedPodcast)
+        let playedEpisode = Episode(
+            guid: sharedGuid,
+            title: "Played",
+            audioUrl: "https://example.com/played.mp3",
+            durationSeconds: 3600,
+            podcast: playedPodcast
+        )
+        playedEpisode.isPlayed = true
+        playedEpisode.listenedSeconds = 3600
+        context.insert(playedEpisode)
+
+        let targetPodcast = Podcast(url: "https://example.com/target.xml", title: "Target")
+        context.insert(targetPodcast)
+        let targetEpisode = Episode(
+            guid: sharedGuid,
+            title: "Target",
+            audioUrl: "https://example.com/target.mp3",
+            durationSeconds: 3600,
+            podcast: targetPodcast
+        )
+        targetEpisode.isPlayed = false
+        targetEpisode.listenedSeconds = 900
+        context.insert(targetEpisode)
+        try! context.save()
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [playedPodcast, targetPodcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        let queuedItem = QueueItem(
+            id: sharedGuid,
+            title: targetEpisode.title,
+            podcastTitle: targetPodcast.title,
+            audioUrl: targetEpisode.audioUrl!,
+            artworkUrl: nil,
+            durationSeconds: 3600,
+            positionSeconds: 900,
+            podcastUrl: targetPodcast.url,
+            pubDate: nil
+        )
+
+        playerManager.playQueueItem(queuedItem)
+
+        let started = await relistenPollUntil { audioManager.currentItem?.audioUrl == queuedItem.audioUrl }
+        XCTAssertTrue(started)
+        XCTAssertEqual(audioManager.currentPosition, 900)
+        XCTAssertFalse(targetEpisode.isPlayed)
+        XCTAssertEqual(targetEpisode.listenedSeconds, 900)
+        XCTAssertTrue(playedEpisode.isPlayed)
+    }
+
     func test_playQueueItem_unplayedEpisode_preservesPosition() async {
         let (podcast, episode) = makeEpisode(
             guid: "ep-resume-from-queue",
