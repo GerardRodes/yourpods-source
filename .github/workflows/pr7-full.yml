@@ -1,0 +1,34 @@
+name: PR 7 full merge gate
+
+on:
+  push:
+    branches:
+      - ci/pr7-full-only
+
+jobs:
+  full:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout PR branch
+        run: |
+          git clone --branch fix/replay-played-queue-items https://github.com/GerardRodes/yourpods-source.git repo
+          cd repo
+          git remote add upstream https://github.com/asecretcompany/yourpods-source.git
+          git fetch --depth 1 upstream main
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: repo
+        run: xcodegen generate
+
+      - name: Diff whitespace check
+        working-directory: repo
+        run: git diff --check upstream/main...HEAD
+
+      - name: Full merge gate
+        working-directory: repo
+        run: |
+          xcodebuild test             -scheme YourPods             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
