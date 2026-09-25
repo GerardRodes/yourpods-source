@@ -739,6 +739,32 @@ final class PlayerManager {
     func moveQueueItems(from source: IndexSet, to destination: Int) {
         audioManager.moveQueueItems(from: source, to: destination)
     }
+
+    /// Play an item already present in Up Next.
+    ///
+    /// A stale queue item can still carry its last position after the corresponding
+    /// Episode has been marked played. Treat an explicit tap on that item as a relisten:
+    /// clear completion through the normal sync path and restart from the beginning.
+    func playQueueItem(_ queueItem: QueueItem) {
+        var item = queueItem
+
+        if podcastManager?.isEpisodePlayed(guid: item.id) == true {
+            podcastManager?.markEpisodeAsUnplayed(
+                podcastUrl: item.podcastUrl,
+                episodeGuid: item.id
+            )
+            item.positionSeconds = 0
+            item.isPlayed = false
+        }
+
+        Task {
+            await audioManager.playEpisode(
+                item,
+                initialPosition: TimeInterval(item.positionSeconds),
+                preserveCurrent: true
+            )
+        }
+    }
     
     func playEpisode(_ episode: Episode, position: TimeInterval? = nil) {
         guard var item = QueueItem.from(episode: episode) else { return }

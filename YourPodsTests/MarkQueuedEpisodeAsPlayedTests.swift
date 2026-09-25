@@ -37,7 +37,8 @@ final class MarkQueuedEpisodeAsPlayedTests: XCTestCase {
 
     private func makeQueueItem(
         guid: String,
-        podcastUrl: String = "https://example.com/feed.xml"
+        podcastUrl: String = "https://example.com/feed.xml",
+        positionSeconds: Int = 0
     ) -> QueueItem {
         QueueItem(
             id: guid,
@@ -46,7 +47,7 @@ final class MarkQueuedEpisodeAsPlayedTests: XCTestCase {
             audioUrl: "https://example.com/\(guid).mp3",
             artworkUrl: nil,
             durationSeconds: 3600,
-            positionSeconds: 0,
+            positionSeconds: positionSeconds,
             podcastUrl: podcastUrl,
             pubDate: nil
         )
@@ -158,6 +159,95 @@ final class MarkQueuedEpisodeAsPlayedTests: XCTestCase {
                       "Advance path must enqueue a durable completion for the played episode")
         XCTAssertFalse(podcastManager.pendingCompletionGuids().contains("ep-advance-next"),
                        "The NEXT episode must not be marked completed")
+    }
+
+    // MARK: - Relisten regression
+
+    /// A played Episode can temporarily coexist with a stale Up Next QueueItem whose
+    /// position is still at the end. Explicitly playing that queue row must be treated
+    /// as a relisten instead of seeking to the stale end position and completing again.
+    func test_playQueueItem_playedEpisode_restartsAtZeroAndClearsPlayedState() async {
+        let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")
+        context.insert(podcast)
+
+        let episode = Episode(
+            guid: "ep-relisten-from-queue",
+            title: "Played Episode",
+            audioUrl: "https://example.com/ep-relisten-from-queue.mp3",
+            durationSeconds: 3600,
+            podcast: podcast
+        )
+        episode.isPlayed = true
+        episode.listenedSeconds = 3600
+        context.insert(episode)
+        try! context.save()
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [podcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        let staleQueueItem = makeQueueItem(
+            guid: episode.guid,
+            positionSeconds: 3600
+        )
+        audioManager.appendToQueue([staleQueueItem])
+
+        playerManager.playQueueItem(staleQueueItem)
+
+        XCTAssertFalse(episode.isPlayed,
+                       "Explicitly replaying a played queue item must clear completion")
+        XCTAssertEqual(episode.listenedSeconds, 0,
+                       "Relisten must reset persisted progress to zero")
+
+        let started = await pollUntil { audioManager.currentItem?.id == episode.guid }
+        XCTAssertTrue(started, "The selected queue item must become current")
+        XCTAssertEqual(audioManager.currentPosition, 0,
+                       "A played queue item must restart at zero, not its stale end position")
+        XCTAssertEqual(audioManager.currentItem?.positionSeconds, 0,
+                       "The current QueueItem must also carry the reset position")
+    }
+
+    /// Ordinary in-progress queue items still resume from their stored position.
+    func test_playQueueItem_unplayedEpisode_preservesPosition() async {
+        let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")
+        context.insert(podcast)
+
+        let episode = Episode(
+            guid: "ep-resume-from-queue",
+            title: "In Progress Episode",
+            audioUrl: "https://example.com/ep-resume-from-queue.mp3",
+            durationSeconds: 3600,
+            podcast: podcast
+        )
+        episode.isPlayed = false
+        episode.listenedSeconds = 900
+        context.insert(episode)
+        try! context.save()
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [podcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        let queuedItem = makeQueueItem(
+            guid: episode.guid,
+            positionSeconds: 900
+        )
+        audioManager.appendToQueue([queuedItem])
+
+        playerManager.playQueueItem(queuedItem)
+
+        let started = await pollUntil { audioManager.currentItem?.id == episode.guid }
+        XCTAssertTrue(started, "The selected queue item must become current")
+        XCTAssertEqual(audioManager.currentPosition, 900,
+                       "Unplayed queue items must continue to resume normally")
+        XCTAssertFalse(episode.isPlayed)
+        XCTAssertEqual(episode.listenedSeconds, 900)
     }
 }
 
