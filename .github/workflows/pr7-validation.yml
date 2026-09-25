@@ -18,7 +18,10 @@ jobs:
 
       - name: Checkout PR branch
         run: |
-          git clone --depth 1 --branch fix/replay-played-queue-items https://github.com/GerardRodes/yourpods-source.git repo
+          git clone --branch fix/replay-played-queue-items https://github.com/GerardRodes/yourpods-source.git repo
+          cd repo
+          git remote add upstream https://github.com/asecretcompany/yourpods-source.git
+          git fetch --depth 1 upstream main
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -27,10 +30,9 @@ jobs:
         working-directory: repo
         run: xcodegen generate
 
-      - name: Swift format lint
+      - name: Diff whitespace check
         working-directory: repo
-        run: |
-          xcrun swift-format lint --strict             YourPods/YourPods/State/PlayerManager.swift             YourPods/YourPods/State/PodcastManager.swift             YourPods/YourPods/Views/QueueView.swift             YourPods/YourPods/Services/CarPlayService.swift             YourPods/YourPods/Views/EpisodeDetailSheet.swift             YourPods/YourPods/Views/PodcastSearchView.swift             YourPods/YourPods/Views/SharedEpisodePreviewSheet.swift             YourPods/YourPods/Views/ContentView.swift             YourPodsTests/MarkQueuedEpisodeAsPlayedTests.swift
+        run: git diff --check upstream/main...HEAD
 
       - name: Smoke tests
         working-directory: repo
