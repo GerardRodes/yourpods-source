@@ -1,0 +1,26 @@
+name: Upstream store health baseline
+
+on:
+  push:
+    branches:
+      - ci/upstream-store-health
+
+jobs:
+  baseline:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout upstream main
+        run: git clone --depth 1 --branch main https://github.com/asecretcompany/yourpods-source.git repo
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: repo
+        run: xcodegen generate
+
+      - name: Store health lock test
+        working-directory: repo
+        run: |
+          xcodebuild test             -scheme YourPods             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'             -only-testing:YourPodsTests/StoreHealthVerdictTests/test_EDGE_preflightVerdict_exclusivelyLockedStore_returnsIndeterminate_notCorrupt
