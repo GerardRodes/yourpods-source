@@ -747,7 +747,7 @@ final class PlayerManager {
     /// clear completion through the normal sync path and restart from the beginning.
     func playQueueItem(_ queueItem: QueueItem, position: TimeInterval? = nil) {
         var item = queueItem
-        let wasPlayed = podcastManager?.isEpisodePlayed(
+        let wasPlayed = item.isPlayed || podcastManager?.isEpisodePlayed(
             podcastUrl: item.podcastUrl,
             guid: item.id
         ) == true

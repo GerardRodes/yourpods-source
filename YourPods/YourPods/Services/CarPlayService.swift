@@ -282,7 +282,7 @@ final class CarPlayService: NSObject {
             let item = CPListItem(text: episode.title, detailText: detail)
             item.isPlaying = isPlaying
             item.handler = { [weak self] _, completion in
-                guard let self, episode.podcast != nil else { completion(); return }
+                guard let self else { completion(); return }
                 self.playEpisode(episode)
                 completion()
             }
