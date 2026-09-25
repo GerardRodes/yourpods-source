@@ -1,0 +1,43 @@
+name: PR 7 validation
+
+on:
+  push:
+    branches:
+      - ci/pr7-validation
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: Checkout PR branch
+        run: |
+          git clone --depth 1 --branch fix/replay-played-queue-items https://github.com/GerardRodes/yourpods-source.git repo
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: repo
+        run: xcodegen generate
+
+      - name: Swift format lint
+        working-directory: repo
+        run: |
+          xcrun swift-format lint --strict             YourPods/YourPods/State/PlayerManager.swift             YourPods/YourPods/State/PodcastManager.swift             YourPods/YourPods/Views/QueueView.swift             YourPods/YourPods/Services/CarPlayService.swift             YourPods/YourPods/Views/EpisodeDetailSheet.swift             YourPods/YourPods/Views/PodcastSearchView.swift             YourPods/YourPods/Views/SharedEpisodePreviewSheet.swift             YourPods/YourPods/Views/ContentView.swift             YourPodsTests/MarkQueuedEpisodeAsPlayedTests.swift
+
+      - name: Smoke tests
+        working-directory: repo
+        run: |
+          xcodebuild test             -scheme YourPods             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'             -testPlan Smoke
+
+      - name: Full merge gate
+        working-directory: repo
+        run: |
+          xcodebuild test             -scheme YourPods             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
