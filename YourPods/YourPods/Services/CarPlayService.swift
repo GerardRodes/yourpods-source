@@ -282,8 +282,8 @@ final class CarPlayService: NSObject {
             let item = CPListItem(text: episode.title, detailText: detail)
             item.isPlaying = isPlaying
             item.handler = { [weak self] _, completion in
-                guard let self, let podcast = episode.podcast else { completion(); return }
-                self.playEpisode(episode, from: podcast)
+                guard let self, episode.podcast != nil else { completion(); return }
+                self.playEpisode(episode)
                 completion()
             }
             loadArtwork(url: episode.imageUrl ?? episode.podcast?.logoUrl, into: item)
@@ -372,7 +372,7 @@ final class CarPlayService: NSObject {
             let item = CPListItem(text: episode.title, detailText: detail)
             item.isPlaying = isPlaying
             item.handler = { [weak self] _, completion in
-                self?.playEpisode(episode, from: podcast)
+                self?.playEpisode(episode)
                 completion()
             }
             loadArtwork(url: episode.imageUrl ?? podcast.logoUrl, into: item)
@@ -389,7 +389,7 @@ final class CarPlayService: NSObject {
     
     // MARK: - Playback Actions
     
-    private func playEpisode(_ episode: Episode, from podcast: Podcast) {
+    private func playEpisode(_ episode: Episode) {
         suppressUpdates = true
         debounceTimer?.invalidate()
         

@@ -250,6 +250,48 @@ final class MarkQueuedEpisodeAsPlayedTests: XCTestCase {
         XCTAssertEqual(audioManager.currentItem?.positionSeconds, 0)
     }
 
+    /// Explicit user positions (for example a shared "Play from 12:34" link) must
+    /// still be honored while clearing the completed state.
+    func test_playQueueItem_playedEpisode_honorsExplicitUserPosition() async {
+        let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")
+        context.insert(podcast)
+
+        let episode = Episode(
+            guid: "ep-relisten-explicit-position",
+            title: "Played Episode",
+            audioUrl: "https://example.com/ep-relisten-explicit-position.mp3",
+            durationSeconds: 3600,
+            podcast: podcast
+        )
+        episode.isPlayed = true
+        episode.listenedSeconds = 3600
+        context.insert(episode)
+        try! context.save()
+
+        let podcastManager = PodcastManager(modelContext: context)
+        podcastManager.subscriptions = [podcast]
+
+        let audioManager = AudioManager()
+        let playerManager = PlayerManager(audioManager: audioManager)
+        playerManager.podcastManager = podcastManager
+
+        let staleQueueItem = makeQueueItem(
+            guid: episode.guid,
+            positionSeconds: 3600
+        )
+
+        playerManager.playQueueItem(staleQueueItem, position: 754)
+
+        XCTAssertFalse(episode.isPlayed)
+        XCTAssertEqual(episode.listenedSeconds, 0)
+
+        let started = await pollUntil { audioManager.currentItem?.id == episode.guid }
+        XCTAssertTrue(started)
+        XCTAssertEqual(audioManager.currentPosition, 754,
+                       "A deliberate user-selected timestamp must override the default relisten-at-zero behavior")
+        XCTAssertEqual(audioManager.currentItem?.positionSeconds, 754)
+    }
+
     /// Ordinary in-progress queue items still resume from their stored position.
     func test_playQueueItem_unplayedEpisode_preservesPosition() async {
         let podcast = Podcast(url: "https://example.com/feed.xml", title: "Test Podcast")

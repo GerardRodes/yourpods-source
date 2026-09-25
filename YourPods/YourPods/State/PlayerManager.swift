@@ -745,22 +745,32 @@ final class PlayerManager {
     /// A stale queue item can still carry its last position after the corresponding
     /// Episode has been marked played. Treat explicit selection as a relisten:
     /// clear completion through the normal sync path and restart from the beginning.
-    func playQueueItem(_ queueItem: QueueItem) {
+    func playQueueItem(_ queueItem: QueueItem, position: TimeInterval? = nil) {
         var item = queueItem
+        let wasPlayed = podcastManager?.isEpisodePlayed(
+            podcastUrl: item.podcastUrl,
+            guid: item.id
+        ) == true
 
-        if podcastManager?.isEpisodePlayed(guid: item.id) == true {
+        if wasPlayed {
             podcastManager?.markEpisodeAsUnplayed(
                 podcastUrl: item.podcastUrl,
                 episodeGuid: item.id
             )
-            item.positionSeconds = 0
             item.isPlayed = false
         }
+
+        // No explicit position means ordinary replay/resume semantics:
+        // completed -> 0, unfinished -> saved position. An explicit position is
+        // deliberate user intent (e.g. "Play from 12:34" on a shared episode),
+        // so preserve it while still clearing completed state.
+        let initialPosition = position ?? TimeInterval(wasPlayed ? 0 : item.positionSeconds)
+        item.positionSeconds = Int(initialPosition)
 
         Task {
             await audioManager.playEpisode(
                 item,
-                initialPosition: TimeInterval(item.positionSeconds),
+                initialPosition: initialPosition,
                 preserveCurrent: true
             )
         }
