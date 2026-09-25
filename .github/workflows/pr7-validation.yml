@@ -1,5 +1,7 @@
 name: PR 7 validation
 
+# Validates the current PR head; temporary workflow lives only on this CI branch.
+
 on:
   push:
     branches:
